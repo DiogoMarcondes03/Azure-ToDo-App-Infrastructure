@@ -1,0 +1,50 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+
+packages:
+  - docker.io
+  - curl
+  - git
+
+# Configure Docker
+runcmd:
+  # Enable and start Docker
+  - systemctl enable docker
+  - systemctl start docker
+  - usermod -aG docker azureuser
+  
+  # Install kubectl
+  - curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+  - chmod +x kubectl
+  - mv kubectl /usr/local/bin/
+  
+  # Install K3s (lightweight Kubernetes)
+  - curl -sfL https://get.k3s.io | sh -
+  - mkdir -p /home/azureuser/.kube
+  - cp /etc/rancher/k3s/k3s.yaml /home/azureuser/.kube/config
+  - chown azureuser:azureuser /home/azureuser/.kube/config
+  - chmod 600 /home/azureuser/.kube/config
+  
+  # Install Azure CLI (for ACR login)
+  - curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+  
+  # Create directory for app data
+  - mkdir -p /opt/todo-data
+  - chown azureuser:azureuser /opt/todo-data
+
+write_files:
+  - path: /home/azureuser/setup-complete.txt
+    content: |
+      Setup completed successfully!
+      - Docker installed and running
+      - K3s (Kubernetes) installed
+      - kubectl configured
+      - Azure CLI installed
+      
+      Next steps:
+      1. Login to Azure CLI: az login
+      2. Login to ACR: az acr login --name <your-acr-name>
+      3. Deploy your application!
+    owner: azureuser:azureuser
+    permissions: '0644'

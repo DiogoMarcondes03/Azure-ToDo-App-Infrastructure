@@ -1,0 +1,97 @@
+name: Deploy Todo App to Azure Kubernetes
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  AZURE_RESOURCE_GROUP: rg-todo-app
+  AZURE_VM_NAME: vm-todo-k8s
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run basic tests
+      run: |
+        python -c "import app; print('App imports successfully')"
+
+    - name: Login to Azure
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Get ACR name
+      id: get-acr
+      run: |
+        ACR_NAME=$(az acr list --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --query "[0].name" -o tsv)
+        echo "acr_name=$ACR_NAME" >> $GITHUB_OUTPUT
+        echo "ACR Name: $ACR_NAME"
+
+    - name: Login to Azure Container Registry
+      run: |
+        az acr login --name ${{ steps.get-acr.outputs.acr_name }}
+
+    - name: Build and push Docker image
+      run: |
+        IMAGE_TAG=${{ steps.get-acr.outputs.acr_name }}.azurecr.io/todo-app:${{ github.sha }}
+        docker build -t $IMAGE_TAG .
+        docker push $IMAGE_TAG
+        echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+
+    - name: Get VM Public IP
+      id: get-vm-ip
+      run: |
+        VM_IP=$(az vm list-ip-addresses --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --name ${{ env.AZURE_VM_NAME }} --query "[0].virtualMachine.network.publicIpAddresses[0].ipAddress" -o tsv)
+        echo "vm_ip=$VM_IP" >> $GITHUB_OUTPUT
+        echo "VM IP: $VM_IP"
+
+    - name: Deploy to Kubernetes
+      run: |
+        # Create SSH key file
+        echo "${{ secrets.VM_SSH_PRIVATE_KEY }}" > ssh_key
+        chmod 600 ssh_key
+        
+        # Copy manifests to VM
+        scp -o StrictHostKeyChecking=no -i ssh_key k8s-manifests.yml azureuser@${{ steps.get-vm-ip.outputs.vm_ip }}:/tmp/
+        
+        # Deploy to Kubernetes
+        ssh -o StrictHostKeyChecking=no -i ssh_key azureuser@${{ steps.get-vm-ip.outputs.vm_ip }} << 'EOF'
+          # Update image in manifest
+          sed -i "s|image: # Will be replaced by GitHub Actions|image: ${{ env.IMAGE_TAG }}|g" /tmp/k8s-manifests.yml
+          
+          # Apply manifests
+          kubectl apply -f /tmp/k8s-manifests.yml
+          
+          # Wait for deployment
+          kubectl rollout status deployment/todo-app -n todo-app --timeout=300s
+          
+          # Show status
+          kubectl get pods -n todo-app
+          kubectl get services -n todo-app
+        EOF
+        
+        # Cleanup
+        rm -f ssh_key
+
+    - name: Display Access Information
+      run: |
+        echo "🎉 Deployment successful!"
+        echo "Access your app at: http://${{ steps.get-vm-ip.outputs.vm_ip }}:30080"
+        echo "SSH to VM: ssh azureuser@${{ steps.get-vm-ip.outputs.vm_ip }}"
