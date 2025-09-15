@@ -69,10 +69,10 @@ jobs:
         chmod 600 ssh_key
         
         # Copy manifests to VM
-        scp -o StrictHostKeyChecking=no -i ssh_key k8s-manifests.yml azureuser@${{ steps.get-vm-ip.outputs.vm_ip }}:/tmp/
+        scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ssh_key k8s-manifests.yml azureuser@${{ steps.get-vm-ip.outputs.vm_ip }}:/tmp/
         
         # Deploy to Kubernetes
-        ssh -o StrictHostKeyChecking=no -i ssh_key azureuser@${{ steps.get-vm-ip.outputs.vm_ip }} << 'EOF'
+        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ssh_key azureuser@${{ steps.get-vm-ip.outputs.vm_ip }} << 'EOF'
           # Update image in manifest
           sed -i "s|image: # Will be replaced by GitHub Actions|image: ${{ env.IMAGE_TAG }}|g" /tmp/k8s-manifests.yml
           
