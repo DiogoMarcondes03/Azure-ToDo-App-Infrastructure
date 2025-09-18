@@ -210,6 +210,6 @@ kubectl apply -f k8s-manifests.yml
 - **Day 2**: Infrastructure setup with Terraform
 - **Day 3**: Kubernetes deployment and troubleshooting
 - **Day 4**: CI/CD pipeline implementation and fixes
-- **Total Time**: 4 days with evening work sessions
+- **Total Time**: 3 days.
 
 This project successfully demonstrates end-to-end cloud application deployment using modern DevOps practices and provides hands-on experience with real-world challenges and solutions.
